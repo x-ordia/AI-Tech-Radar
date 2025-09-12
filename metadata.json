@@ -1,0 +1,5 @@
+{
+  "name": "AI Tech Radar",
+  "description": "An intelligent news aggregator that uses Gemini to fetch, analyze, and summarize the latest happenings in Generative AI, Machine Learning, and other tech domains. It provides curated insights for AI teams to stay updated on impactful industry trends.",
+  "requestFramePermissions": []
+}
