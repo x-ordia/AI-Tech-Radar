@@ -14,7 +14,7 @@ export interface PromptConfig {
   existingTitles: string[];
 }
 
-const generatePrompt = (config: PromptConfig): string => {
+const generatePrompt = (config: PromptConfig, count: number): string => {
   const { tabKey, customQuery, existingTitles = [] } = config;
 
   const exclusionClause = existingTitles.length > 0
@@ -23,12 +23,11 @@ const generatePrompt = (config: PromptConfig): string => {
 
   const outputFormatInstructions = `
     Output Format:
-    - You MUST return a stream of individual JSON objects.
-    - Each JSON object MUST be a complete, valid JSON object.
-    - Do NOT wrap the objects in a JSON array or use markdown like \`\`\`.
-    - Do NOT include ANY text or explanation before or after the JSON objects.
-    - Your entire response must consist only of these JSON objects.
-    - Each JSON object MUST have this exact structure:
+    - You MUST return a single, valid JSON array of objects.
+    - The array should contain exactly ${count} unique articles unless fewer are available.
+    - Do NOT wrap the array in markdown like \`\`\`.
+    - Do NOT include ANY text, explanation, or conversational filler before or after the JSON array. Your entire response must be ONLY the JSON array.
+    - Each object in the array MUST have this exact structure:
     {
       "title": "string",
       "summary": "string",
@@ -40,7 +39,7 @@ const generatePrompt = (config: PromptConfig): string => {
   switch(tabKey) {
     case 'NVIDIA':
       return `
-        Task: Find, analyze, and summarize the top 10 most recent and impactful technical updates, tool releases, and research findings from the last 48 hours exclusively about NVIDIA technologies.
+        Task: Find, analyze, and summarize the top ${count} most recent and impactful technical updates, tool releases, and research findings from the last 48 hours exclusively about NVIDIA technologies.
 
         Your search MUST be strictly confined to the NVIDIA ecosystem. Focus on these specific domains: ${TAB_CONFIG.NVIDIA.domains.join(', ')}.
 
@@ -59,7 +58,7 @@ const generatePrompt = (config: PromptConfig): string => {
     
     case 'TECH':
       return `
-        Task: Find, analyze, and summarize the top 10 most recent and impactful technical updates, tool releases, and research findings from the last 48 hours for a broad AI development and research team.
+        Task: Find, analyze, and summarize the top ${count} most recent and impactful technical updates, tool releases, and research findings from the last 48 hours for a broad AI development and research team.
 
         Focus on a wide range of significant developments across these key domains: ${TAB_CONFIG.TECH.domains.join(', ')}.
 
@@ -78,7 +77,7 @@ const generatePrompt = (config: PromptConfig): string => {
 
     case 'CUSTOM':
       return `
-        Task: Perform a deep research dive into the user's specific technical query. Find the top 10 most relevant and recent news articles, technical blog posts, or official documentation releases related to this query from the last 48 hours.
+        Task: Perform a deep research dive into the user's specific technical query. Find the top ${count} most relevant and recent news articles, technical blog posts, or official documentation releases related to this query from the last 48 hours.
         
         User's Query: "${customQuery}"
 
@@ -94,112 +93,78 @@ const generatePrompt = (config: PromptConfig): string => {
       `;
     
     default:
-        return ''; // Should not be reached
+        return '';
   }
 };
 
-interface StreamCallbacks {
-  onArticle: (article: NewsArticle) => void;
-  onSources: (sources: GroundingChunk[]) => void;
-  onComplete: () => void;
-  onError: (error: Error) => void;
-}
-
-export const streamNews = async (
-  config: PromptConfig,
-  callbacks: StreamCallbacks
-): Promise<void> => {
-  if (config.tabKey === 'CUSTOM' && (!config.customQuery || config.customQuery.trim() === '')) {
-    callbacks.onComplete();
-    return;
-  }
-
+const fetchNewsArticles = async (prompt: string): Promise<{articles: NewsArticle[], sources: GroundingChunk[]}> => {
   try {
-    const prompt = generatePrompt(config);
-    if (!prompt) {
-      callbacks.onError(new Error("Invalid tab configuration provided."));
-      return;
-    }
-    
-    const responseStream = await ai.models.generateContentStream({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You are an API that returns data in JSON format. You do not provide conversational text, summaries, or any output that is not a valid JSON object matching the user's requested schema.",
         tools: [{ googleSearch: {} }],
       },
     });
 
-    let buffer = '';
-    const allSources = new Map<string, GroundingChunk>();
-
-    const processBuffer = () => {
-      while (true) {
-        const firstOpen = buffer.indexOf('{');
-        if (firstOpen === -1) {
-          if (buffer.trim() === '') buffer = '';
-          return;
-        }
-
-        if (firstOpen > 0) {
-          buffer = buffer.substring(firstOpen);
-        }
-
-        let braceCount = 1;
-        let searchIndex = 1;
-        let end = -1;
-
-        while (searchIndex < buffer.length) {
-          const char = buffer[searchIndex];
-          if (char === '{') {
-            braceCount++;
-          } else if (char === '}') {
-            braceCount--;
-          }
-          if (braceCount === 0) {
-            end = searchIndex;
-            break;
-          }
-          searchIndex++;
-        }
-
-        if (end !== -1) {
-          const jsonString = buffer.substring(0, end + 1);
-          buffer = buffer.substring(end + 1);
-          try {
-            const article: NewsArticle = JSON.parse(jsonString);
-            callbacks.onArticle(article);
-          } catch (e) {
-            console.warn("Could not parse chunk as JSON, skipping:", jsonString, e);
-          }
-        } else {
-          return;
-        }
-      }
-    };
-
-    for await (const chunk of responseStream) {
-      const sources = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [];
-      for (const source of sources) {
-        if (source.web?.uri) {
-          allSources.set(source.web.uri, source);
-        }
-      }
-      buffer += chunk.text;
-      processBuffer();
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [];
+    const text = response.text;
+    
+    const jsonStart = text.indexOf('[');
+    const jsonEnd = text.lastIndexOf(']');
+    
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+      console.warn("Could not find a valid JSON array in the model's response.", { responseText: text });
+      return { articles: [], sources };
     }
     
-    processBuffer();
-    callbacks.onSources(Array.from(allSources.values()));
-    callbacks.onComplete();
-
+    const jsonString = text.substring(jsonStart, jsonEnd + 1);
+    const articles: NewsArticle[] = JSON.parse(jsonString);
+    
+    return { articles, sources };
   } catch (error) {
-    console.error("Error streaming news from Gemini API:", error);
-    const err = error instanceof Error 
-      ? error 
-      : new Error("Failed to stream news from the AI. The model may have returned an unexpected format.");
-    callbacks.onError(err);
+    console.error("Error fetching or parsing news from Gemini API:", error);
+    throw new Error("Failed to fetch news from the AI. The model returned an unexpected format.");
   }
+};
+
+export async function* streamNews(
+  config: PromptConfig,
+  totalToFetch: number = 10
+): AsyncGenerator<NewsArticle[], void, void> {
+    if (config.tabKey === 'CUSTOM' && (!config.customQuery || config.customQuery.trim() === '')) {
+      return;
+    }
+
+    const BATCH_SIZE = 4;
+    let fetchedCount = 0;
+    const allFetchedTitles = new Set<string>(config.existingTitles);
+
+    while (fetchedCount < totalToFetch) {
+        const remaining = totalToFetch - fetchedCount;
+        const currentBatchSize = Math.min(BATCH_SIZE, remaining);
+        if (currentBatchSize <= 0) break;
+
+        const currentConfig = { ...config, existingTitles: Array.from(allFetchedTitles) };
+        const prompt = generatePrompt(currentConfig, currentBatchSize);
+        if (!prompt) {
+          throw new Error("Invalid tab configuration provided.");
+        }
+        
+        const { articles } = await fetchNewsArticles(prompt);
+        
+        const newUniqueArticles = articles.filter(a => a.title && !allFetchedTitles.has(a.title));
+
+        if (newUniqueArticles.length > 0) {
+            newUniqueArticles.forEach(a => allFetchedTitles.add(a.title));
+            fetchedCount += newUniqueArticles.length;
+            yield newUniqueArticles;
+        }
+
+        if (articles.length < currentBatchSize) {
+            break;
+        }
+    }
 };
 
 export const validateQuery = async (query: string): Promise<{isValid: boolean; reason: string}> => {

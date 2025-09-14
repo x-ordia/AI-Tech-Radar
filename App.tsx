@@ -7,9 +7,12 @@ import LoadingSpinner from './components/LoadingSpinner';
 import Tabs from './components/Tabs';
 import CustomQueryForm from './components/CustomQueryForm';
 import MoreSpinner from './components/MoreSpinner';
+import WelcomeNote from './components/WelcomeNote';
+import FAQPage from './components/FAQPage';
 
 const App: React.FC = () => {
   const [storeState, setStoreState] = useState<NewsStoreState>(newsStore.getState());
+  const [view, setView] = useState<'main' | 'faq'>('main');
   const observer = useRef<IntersectionObserver | null>(null);
 
   const loadMoreRef = useCallback((node: HTMLDivElement) => {
@@ -92,24 +95,31 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-darker text-slate-light font-sans">
-      <Header />
-      <Tabs activeTab={activeTab} onTabClick={handleTabClick} isLoading={isLoading} />
-      {activeTab === 'CUSTOM' && (
-        <CustomQueryForm
-          query={customQuery}
-          onQueryChange={handleCustomQueryChange}
-          onSearch={handleCustomSearch}
-          isLoading={isLoading}
-          error={customQueryError}
-        />
+      <Header onFaqClick={() => setView('faq')} />
+      {view === 'faq' ? (
+        <FAQPage onBackClick={() => setView('main')} />
+      ) : (
+        <>
+          <WelcomeNote />
+          <Tabs activeTab={activeTab} onTabClick={handleTabClick} isLoading={isLoading} />
+          {activeTab === 'CUSTOM' && (
+            <CustomQueryForm
+              query={customQuery}
+              onQueryChange={handleCustomQueryChange}
+              onSearch={handleCustomSearch}
+              isLoading={isLoading}
+              error={customQueryError}
+            />
+          )}
+          <main className="flex-grow p-4 sm:p-6 lg:p-8">
+            {renderContent()}
+            {isFetchingMore && <MoreSpinner />}
+            {!isLoading && !isFetchingMore && !hasMore && articles.length > 0 && (
+               <p className="text-center text-slate-medium my-8">You've reached the end!</p>
+            )}
+          </main>
+        </>
       )}
-      <main className="flex-grow p-4 sm:p-6 lg:p-8">
-        {renderContent()}
-        {isFetchingMore && <MoreSpinner />}
-        {!isLoading && !isFetchingMore && !hasMore && articles.length > 0 && (
-           <p className="text-center text-slate-medium my-8">You've reached the end!</p>
-        )}
-      </main>
     </div>
   );
 };

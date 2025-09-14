@@ -33,7 +33,7 @@ const CustomQueryForm: React.FC<CustomQueryFormProps> = ({ query, onQueryChange,
               maxLength={50}
               placeholder="e.g., 'advancements in vector databases'"
               disabled={isLoading}
-              className="w-full px-4 py-3 bg-slate-800 text-slate-light border-2 border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-colors duration-200 disabled:opacity-50"
+              className="w-full px-4 py-2 sm:py-3 bg-slate-800 text-slate-light border-2 border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-colors duration-200 disabled:opacity-50"
               aria-describedby="query-error"
             />
              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">
@@ -43,7 +43,7 @@ const CustomQueryForm: React.FC<CustomQueryFormProps> = ({ query, onQueryChange,
           <button
             type="submit"
             disabled={isLoading || !query.trim()}
-            className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none whitespace-nowrap"
+            className="w-full sm:w-auto px-6 py-2 sm:py-3 bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none whitespace-nowrap"
           >
             {isLoading ? 'Searching...' : 'Search'}
           </button>

@@ -10,7 +10,7 @@ interface TabsProps {
 const Tabs: React.FC<TabsProps> = ({ activeTab, onTabClick, isLoading }) => {
   return (
     <div className="bg-slate-darker border-b border-slate-800 px-4 sm:px-6 lg:px-8">
-        <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+        <nav className="-mb-px flex space-x-4 sm:space-x-6" aria-label="Tabs">
         {Object.entries(TAB_CONFIG).map(([key, config]) => {
             const isActive = activeTab === key;
             return (
